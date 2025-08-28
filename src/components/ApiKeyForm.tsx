@@ -52,14 +52,14 @@ export function ApiKeyForm({ onApiKeySubmit }: ApiKeyFormProps) {
               <p className="text-xs text-muted-foreground">
                 Dapatkan API key dari{" "}
                 <a 
-                  href="https://t.me/fykxt_bot" 
+                  href="https://www.uuidgenerator.net/" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-primary hover:text-primary-glow transition-colors"
                 >
-                  @fykxt_bot
+                  UUID Generator
                 </a>{" "}
-                dengan pesan <code className="bg-muted px-1 rounded">/viewkey</code>
+                dengan mengklik <code className="bg-muted px-1 rounded">Generate</code>
               </p>
             </div>
 
