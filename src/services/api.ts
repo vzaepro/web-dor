@@ -10,7 +10,23 @@ class ApiService {
 
   async loadToken(apiKey: string): Promise<UserData | null> {
     try {
-      // Simulate API call - replace with actual implementation
+      // Check if it's a UUID format (simple validation)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      
+      if (uuidRegex.test(apiKey)) {
+        // Simulate successful response for UUID
+        await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate network delay
+        
+        return {
+          is_logged_in: false,
+          phone_number: null,
+          balance: null,
+          balance_expired_at: null,
+          tokens: null
+        }
+      }
+
+      // For non-UUID keys, try actual API call
       const response = await fetch(`${this.baseUrl}/load-token`, {
         method: 'POST',
         headers: {
@@ -33,7 +49,16 @@ class ApiService {
 
   async login(phoneNumber: string): Promise<boolean> {
     try {
-      // Simulate login API call - replace with actual implementation
+      // Check if using UUID (demo mode)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      
+      if (uuidRegex.test(this.apiKey)) {
+        // Simulate successful login for demo
+        await new Promise(resolve => setTimeout(resolve, 1500)) // Simulate network delay
+        return true
+      }
+
+      // For non-UUID keys, try actual API call
       const response = await fetch(`${this.baseUrl}/login`, {
         method: 'POST',
         headers: {
