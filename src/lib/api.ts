@@ -128,6 +128,14 @@ export async function getProfile() {
   return api<any>(`/profile?${q.toString()}`, { method: "GET" });
 }
 
+export async function getMyPackages() {
+  return api<any>(`/my-packages`, { method: "GET" });
+}
+
+export async function getXutPackages() {
+  return api<any>(`/xut-packages`, { method: "GET" });
+}
+
 export const tokenStore = {
   get: loadTokens,
   set: setTokens,

@@ -2,11 +2,12 @@ import { useState, useEffect } from "react"
 import { ApiKeyForm } from "@/components/ApiKeyForm"
 import { LoginForm } from "@/components/LoginForm"
 import { Dashboard } from "@/components/Dashboard"
-import { apiService } from "@/services/api"
 import { UserData } from "@/types/api"
 import { useToast } from "@/hooks/use-toast"
+import { requestOtp, submitOtp, getBalance, getProfile, tokenStore } from "@/lib/api"
+import Packages from "./Packages"
 
-type AppState = 'api-key' | 'login' | 'dashboard'
+type AppState = 'api-key' | 'login' | 'dashboard' | 'packages'
 
 const Index = () => {
   const [appState, setAppState] = useState<AppState>('api-key')
@@ -22,30 +23,37 @@ const Index = () => {
 
   const handleApiKeySubmit = async (apiKey: string) => {
     setIsLoading(true)
-    apiService.setApiKey(apiKey)
     
     // Store API key in localStorage for persistence
     localStorage.setItem('myxl_api_key', apiKey)
     
     try {
-      const userData = await apiService.loadToken(apiKey)
-      if (userData) {
-        setUserData(userData)
-        if (userData.is_logged_in) {
+      // Check if user has existing tokens
+      const existingTokens = tokenStore.get()
+      if (existingTokens) {
+        try {
+          // Try to get user data with existing tokens
+          const balance = await getBalance()
+          const profile = await getProfile()
+          
+          setUserData({
+            is_logged_in: true,
+            phone_number: profile.phone_number || null,
+            balance: balance.balance || null,
+            balance_expired_at: balance.expired_at || null,
+            tokens: existingTokens
+          })
           setAppState('dashboard')
           toast({
             title: "Berhasil!",
-            description: "Login berhasil dengan API key"
+            description: "Login berhasil dengan API key yang tersimpan"
           })
-        } else {
+        } catch {
+          // Tokens might be expired, go to login
           setAppState('login')
         }
       } else {
-        toast({
-          title: "Error",
-          description: "API key tidak valid atau terjadi kesalahan",
-          variant: "destructive"
-        })
+        setAppState('login')
       }
     } catch (error) {
       toast({
@@ -61,29 +69,46 @@ const Index = () => {
   const handleLogin = async (phoneNumber: string) => {
     setIsLoading(true)
     try {
-      const success = await apiService.login(phoneNumber)
-      if (success) {
-        setUserData(prev => ({ 
-          ...prev, 
-          is_logged_in: true, 
-          phone_number: phoneNumber 
-        }))
-        setAppState('dashboard')
-        toast({
-          title: "Berhasil!",
-          description: `Login berhasil dengan nomor ${phoneNumber}`
-        })
-      } else {
-        toast({
-          title: "Error",
-          description: "Gagal login. Periksa nomor HP Anda",
-          variant: "destructive"
-        })
+      // Request OTP
+      await requestOtp(phoneNumber)
+      
+      toast({
+        title: "OTP Terkirim",
+        description: "Silakan cek HP Anda untuk kode OTP"
+      })
+      
+      // For demo purposes, simulate OTP input
+      const otp = prompt("Masukkan kode OTP dari HP Anda:")
+      if (!otp) {
+        setIsLoading(false)
+        return
       }
-    } catch (error) {
+      
+      // Submit OTP
+      const tokenData = await submitOtp(phoneNumber, otp)
+      
+      // Get user data
+      const balance = await getBalance()
+      const profile = await getProfile()
+      
+      setUserData({
+        is_logged_in: true,
+        phone_number: phoneNumber,
+        balance: balance.balance || null,
+        balance_expired_at: balance.expired_at || null,
+        tokens: tokenData
+      })
+      
+      setAppState('dashboard')
+      
+      toast({
+        title: "Berhasil!",
+        description: `Login berhasil dengan nomor ${phoneNumber}`
+      })
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Terjadi kesalahan saat login",
+        description: error.message || "Terjadi kesalahan saat login",
         variant: "destructive"
       })
     } finally {
@@ -93,6 +118,7 @@ const Index = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('myxl_api_key')
+    tokenStore.clear()
     setUserData({
       is_logged_in: false,
       phone_number: null,
@@ -108,17 +134,7 @@ const Index = () => {
   }
 
   const handleViewPackages = () => {
-    toast({
-      title: "Coming Soon",
-      description: "Fitur lihat paket akan segera hadir"
-    })
-  }
-
-  const handleViewXutPackages = () => {
-    toast({
-      title: "Coming Soon", 
-      description: "Fitur XUT packages akan segera hadir"
-    })
+    setAppState('packages')
   }
 
   const handleChangeAccount = () => {
@@ -141,12 +157,16 @@ const Index = () => {
     return <LoginForm onLogin={handleLogin} isLoading={isLoading} />
   }
 
+  if (appState === 'packages') {
+    return <Packages onBack={() => setAppState('dashboard')} />
+  }
+
   return (
     <Dashboard 
       userData={userData}
       onLogout={handleLogout}
       onViewPackages={handleViewPackages}
-      onViewXutPackages={handleViewXutPackages}
+      onViewXutPackages={handleViewPackages}
       onChangeAccount={handleChangeAccount}
     />
   )
