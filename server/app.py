@@ -1,6 +1,5 @@
-
 import os
-from fastapi import FastAPI, HTTPException, Header, Query
+from fastapi import FastAPI, HTTPException, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -14,12 +13,9 @@ from myxl.api_request import (
 from myxl.crypto_helper import API_KEY as DEFAULT_MYXL_API_KEY
 
 # ---------- FastAPI setup ----------
-app = FastAPI(title="myXL Bridge API", version="1.1.0")
+app = FastAPI(title="myXL Bridge API", version="1.2.0")
 
 # Origins yang diizinkan untuk CORS
-# - Selalu izinkan dev localhost
-# - Tambahan origin produksi via ENV: WEB_ORIGIN (pisahkan dengan koma bila lebih dari satu)
-#   contoh: WEB_ORIGIN="https://app.example.com,https://www.example.com"
 allowed_origins = {"http://localhost:5173", "http://127.0.0.1:5173"}
 if os.getenv("WEB_ORIGIN"):
     for item in os.getenv("WEB_ORIGIN").split(","):
@@ -59,6 +55,18 @@ def resolve_myxl_key(x_api_key: Optional[str]) -> str:
     """
     return x_api_key or os.getenv("MYXL_API_KEY") or DEFAULT_MYXL_API_KEY
 
+def get_id_token_from_request(request: Request, id_token_qs: Optional[str]) -> str:
+    """
+    Ambil id_token dari query (?id_token=...) atau dari header Authorization: Bearer <token>.
+    Prioritas ke query, jika tidak ada akan cek header.
+    """
+    if id_token_qs:
+        return id_token_qs
+    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    if auth and auth.lower().startswith("bearer "):
+        return auth.split(" ", 1)[1].strip()
+    raise HTTPException(401, "id_token missing (supply ?id_token=... or Authorization: Bearer <id_token>)")
+
 # ---------- Health & Root ----------
 @app.get("/health")
 def health():
@@ -68,7 +76,7 @@ def health():
 def root():
     return {
         "service": "myXL Bridge API",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "docs": "/docs",
         "health": "/health"
     }
@@ -99,54 +107,98 @@ def route_refresh_token(body: RefreshBody):
 # ---------- Profile / Balance ----------
 @app.get("/profile")
 def route_profile(
+    request: Request,
     access_token: str = Query(...),
-    id_token: str = Query(...),
+    id_token: Optional[str] = Query(None),
     x_api_key: Optional[str] = Header(default=None, convert_underscores=False),
 ):
     myxl_key = resolve_myxl_key(x_api_key)
-    data = get_profile(myxl_key, access_token, id_token)
-    if data is None:
-        raise HTTPException(502, "Gagal ambil profil.")
-    return data
+    idt = get_id_token_from_request(request, id_token)
+
+    try:
+        data = get_profile(myxl_key, access_token, idt)
+        if data is None:
+            raise HTTPException(401, "Unauthorized (token expired/invalid or API key invalid)")
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print("[/profile] internal error:", e)
+        traceback.print_exc()
+        raise HTTPException(502, "Downstream error")
 
 @app.get("/balance")
 def route_balance(
-    id_token: str = Query(...),
+    request: Request,
+    id_token: Optional[str] = Query(None),
     x_api_key: Optional[str] = Header(default=None, convert_underscores=False),
 ):
     myxl_key = resolve_myxl_key(x_api_key)
-    bal = get_balance(myxl_key, id_token)
-    if bal is None:
-        raise HTTPException(502, "Gagal ambil saldo/balance.")
-    return bal
+    idt = get_id_token_from_request(request, id_token)
+
+    try:
+        bal = get_balance(myxl_key, idt)
+        if not bal:
+            raise HTTPException(401, "Unauthorized / token expired / API key invalid")
+        return bal
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print("[/balance] internal error:", e)
+        traceback.print_exc()
+        raise HTTPException(502, "Downstream error")
 
 # ---------- Packages ----------
 @app.get("/packages/family/{family_code}")
 def route_get_family(
+    request: Request,
     family_code: str,
     access_token: str = Query(...),
-    id_token: str = Query(...),
+    id_token: Optional[str] = Query(None),
     x_api_key: Optional[str] = Header(default=None, convert_underscores=False),
 ):
     myxl_key = resolve_myxl_key(x_api_key)
-    tokens = {"access_token": access_token, "id_token": id_token}
-    data = get_family(myxl_key, tokens, family_code)
-    if data is None:
-        raise HTTPException(502, f"Gagal ambil paket family {family_code}.")
-    return data
+    idt = get_id_token_from_request(request, id_token)
+    tokens = {"access_token": access_token, "id_token": idt}
+
+    try:
+        data = get_family(myxl_key, tokens, family_code)
+        if data is None:
+            raise HTTPException(401, f"Failed to get family {family_code} (token/API key)")
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print("[/packages/family] internal error:", e)
+        traceback.print_exc()
+        raise HTTPException(502, "Downstream error")
 
 @app.get("/packages/{package_option_code}")
 def route_get_package(
+    request: Request,
     package_option_code: str,
-    id_token: str = Query(...),
+    id_token: Optional[str] = Query(None),
     x_api_key: Optional[str] = Header(default=None, convert_underscores=False),
 ):
     myxl_key = resolve_myxl_key(x_api_key)
-    tokens = {"id_token": id_token}
-    data = get_package(myxl_key, tokens, package_option_code)
-    if data is None:
-        raise HTTPException(502, f"Gagal ambil paket {package_option_code}.")
-    return data
+    idt = get_id_token_from_request(request, id_token)
+    tokens = {"id_token": idt}
+
+    try:
+        data = get_package(myxl_key, tokens, package_option_code)
+        if data is None:
+            raise HTTPException(401, f"Failed to get package {package_option_code} (token/API key)")
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print("[/packages/detail] internal error:", e)
+        traceback.print_exc()
+        raise HTTPException(502, "Downstream error")
 
 # ---------- Purchase ----------
 @app.post("/purchase/{package_option_code}")
@@ -157,7 +209,15 @@ def route_purchase(
 ):
     myxl_key = resolve_myxl_key(x_api_key)
     tokens = {"access_token": body.access_token, "id_token": body.id_token}
-    result = purchase_package(myxl_key, tokens, package_option_code)
-    if not result:
-        raise HTTPException(502, "Gagal melakukan pembelian.")
-    return result
+    try:
+        result = purchase_package(myxl_key, tokens, package_option_code)
+        if not result:
+            raise HTTPException(502, "Gagal melakukan pembelian.")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print("[/purchase] internal error:", e)
+        traceback.print_exc()
+        raise HTTPException(502, "Downstream error")
