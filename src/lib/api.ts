@@ -1,7 +1,7 @@
 // src/lib/api.ts
 // Minimal fetch wrapper + token store lokal (localStorage)
 
-const BASE = import.meta.env.VITE_API_BASE as string; // contoh: "https://web-dor.up.railway.app"
+const BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000"; // Backend server di monorepo
 
 type Tokens = {
   id_token: string;

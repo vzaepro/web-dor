@@ -66,45 +66,40 @@ const Index = () => {
     }
   }
 
-  const handleLogin = async (phoneNumber: string) => {
+  const handleLogin = async (phoneNumber: string, otp?: string) => {
     setIsLoading(true)
     try {
-      // Request OTP
-      await requestOtp(phoneNumber)
-      
-      toast({
-        title: "OTP Terkirim",
-        description: "Silakan cek HP Anda untuk kode OTP"
-      })
-      
-      // For demo purposes, simulate OTP input
-      const otp = prompt("Masukkan kode OTP dari HP Anda:")
       if (!otp) {
-        setIsLoading(false)
-        return
+        // Step 1: Request OTP
+        await requestOtp(phoneNumber)
+        
+        toast({
+          title: "OTP Terkirim",
+          description: "Silakan cek HP Anda untuk kode OTP"
+        })
+      } else {
+        // Step 2: Submit OTP and login
+        const tokenData = await submitOtp(phoneNumber, otp)
+        
+        // Get user data
+        const balance = await getBalance()
+        const profile = await getProfile()
+        
+        setUserData({
+          is_logged_in: true,
+          phone_number: phoneNumber,
+          balance: balance.balance || null,
+          balance_expired_at: balance.expired_at || null,
+          tokens: tokenData
+        })
+        
+        setAppState('dashboard')
+        
+        toast({
+          title: "Berhasil!",
+          description: `Login berhasil dengan nomor ${phoneNumber}`
+        })
       }
-      
-      // Submit OTP
-      const tokenData = await submitOtp(phoneNumber, otp)
-      
-      // Get user data
-      const balance = await getBalance()
-      const profile = await getProfile()
-      
-      setUserData({
-        is_logged_in: true,
-        phone_number: phoneNumber,
-        balance: balance.balance || null,
-        balance_expired_at: balance.expired_at || null,
-        tokens: tokenData
-      })
-      
-      setAppState('dashboard')
-      
-      toast({
-        title: "Berhasil!",
-        description: `Login berhasil dengan nomor ${phoneNumber}`
-      })
     } catch (error: any) {
       toast({
         title: "Error",
